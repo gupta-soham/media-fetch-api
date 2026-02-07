@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[project]
+name = "media-fetch-api"
+version = "1.0.0"
+description = "Media URL extraction API supporting 12 platforms"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx[http2]>=0.27.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0",
+    "m3u8>=6.0.0",
+    "python-dotenv>=1.0",
+    "pycryptodome>=3.20",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.9.0",
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "RUF",    # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (formatter handles this)
+    "B008",   # do not perform function calls in argument defaults (FastAPI depends on this)
+    "B904",   # raise from within except (intentionally omitted for HTTP error wrapping)
+    "B905",   # zip strict (not needed for our XOR use case)
+    "N805",   # first argument of a method should be named self (pydantic validators)
+    "N818",   # exception name should end with Error (JS control flow uses Break/Continue)
+    "UP007",  # use X | Y for union types (we already do, but some Optional[] remain)
+    "UP042",  # use StrEnum (we support broad pydantic/json compat with str+Enum)
+    "RUF012", # mutable class attributes (used intentionally for caches)
+    "SIM102", # nested if (sometimes clearer for complex conditions)
+    "SIM108", # ternary (sometimes clearer as if/else)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+combine-as-imports = true
+force-wrap-aliases = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning:http.cookiejar",
+]

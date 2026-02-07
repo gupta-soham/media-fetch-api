@@ -1,0 +1,45 @@
+# Git and CI
+.git
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.eggs
+*.egg-info
+*.egg
+dist
+build
+
+# Virtual env and env files
+.env
+.env.*
+!.env.example
+venv
+.venv
+env
+
+# Tests and dev (not needed in image)
+tests
+.pytest_cache
+.coverage
+htmlcov
+.pre-commit-config.yaml
+
+# IDE and OS
+.idea
+.vscode
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Cookie files (secrets; mount at runtime)
+cookies/*.txt
+
+# Docs and Docker (not needed inside image)
+README.md
+Dockerfile
+docker-compose.yml
