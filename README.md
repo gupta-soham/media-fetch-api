@@ -172,6 +172,16 @@ docker build -t media-fetch-api .
 docker run -d -p 8000:8000 -v ./cookies:/app/cookies media-fetch-api
 ```
 
+### Option 3 -- Development with tmux + ngrok
+
+Run the API and expose it via ngrok in a split tmux session (API on port 7652):
+
+```bash
+tmux new-session -d -s media-api 'cd /home/sohamg_sarvam_ai/video-downloader/media-fetch-api && source venv/bin/activate && python -m uvicorn app.main:app --host 0.0.0.0 --port 7652'; tmux split-window -h -t media-api 'ngrok http 7652'; tmux attach -t media-api
+```
+
+Adjust the `cd` path if your project lives elsewhere. Detach with `Ctrl+b d`; reattach with `tmux attach -t media-api`.
+
 ### Verify
 
 ```bash
@@ -185,6 +195,17 @@ curl http://localhost:8000/api/health
 open http://localhost:8000/docs
 ```
 
+### Downloading media (script)
+
+Use **`./download.sh`** from the API project root (or **`./scripts/download.sh`** with the same args).
+
+- **3 args** – Single-call **`GET /api/download?url=...`**: server does extract, then stream or **yt-dlp on the server** (with the API’s cookies). Best quality when the server has yt-dlp and valid `cookies/youtube.txt`.
+  ```bash
+  ./download.sh "https://your-api.ngrok-free.dev" "https://www.youtube.com/watch?v=VIDEO_ID" output.mp4
+  ```
+
+**Server**: Install **yt-dlp** on the API server (e.g. `pip install yt-dlp` or use the Docker image which includes it). Put **cookies** in `cookies/youtube.txt` on the server for better YouTube quality. See [scripts/COOKIES.md](scripts/COOKIES.md).
+
 ---
 
 ## API Reference
@@ -194,6 +215,7 @@ open http://localhost:8000/docs
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/extract` | Extract media URLs from a supported platform |
+| `GET` | `/api/download` | Download media file in one call (server runs yt-dlp when needed) |
 | `GET` | `/api/supported` | List all supported platforms with example URLs |
 | `GET` | `/api/health` | Health check: FFmpeg availability, cookie status |
 | `GET` | `/docs` | Swagger UI (auto-generated) |
@@ -664,39 +686,10 @@ Some platforms require or benefit from cookie-based authentication:
 
 ### Setting Up Cookies
 
-1. **Create cookie files** in the `cookies/` directory using **Netscape/Mozilla format**:
+The API loads cookies from `cookies/<service>.json` (Playwright storage state) or `cookies/<service>.txt` (Netscape format). Use **Playwright** for an interactive browser session to capture cookies (see [scripts/COOKIES.md](scripts/COOKIES.md)).
 
-```
-cookies/
-  youtube.txt
-  instagram.txt
-  twitter.txt
-  facebook.txt
-  google_drive.txt
-```
-
-2. **Export from your browser** using one of these methods:
-
-**Browser Extension** (recommended):
-- Install "Get cookies.txt LOCALLY" (Chrome/Firefox)
-- Navigate to the target site while logged in
-- Click the extension and export as `cookies.txt`
-- Save to `cookies/<platform>.txt`
-
-**Using curl**:
-```bash
-# This creates a basic cookie file; for full auth, use the extension method
-curl -c cookies/youtube.txt -b cookies/youtube.txt \
-  "https://www.youtube.com" -o /dev/null -s
-```
-
-3. **Netscape cookie format** (one cookie per line):
-
-```
-# domain	include_subdomains	path	secure	expiry	name	value
-.youtube.com	TRUE	/	TRUE	1700000000	LOGIN_INFO	AFmmF2swRA...
-.youtube.com	TRUE	/	TRUE	1700000000	SID	g.a000pQi...
-```
+- **YouTube**: `cookies/youtube.txt` or `cookies/youtube.json` — used by the API and by the download script’s yt-dlp fallback for better resolution.
+- **Instagram, Facebook, TikTok, Vimeo, etc.**: same pattern; see the per-platform table in [scripts/COOKIES.md](scripts/COOKIES.md).
 
 The API automatically loads and applies the correct cookies when extracting from each platform.
 

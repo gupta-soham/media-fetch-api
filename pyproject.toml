@@ -21,6 +21,7 @@ dependencies = [
     "m3u8>=6.0.0",
     "python-dotenv>=1.0",
     "pycryptodome>=3.20",
+    "yt-dlp>=2024.0.0",
 ]
 
 [project.optional-dependencies]

@@ -12,8 +12,8 @@ WORKDIR /app
 COPY pyproject.toml .
 COPY app ./app
 
-# Install runtime dependencies only (no dev extras)
-RUN pip install --no-cache-dir .
+# Install runtime dependencies and yt-dlp (for YouTube server-side fallback when stream proxy fails)
+RUN pip install --no-cache-dir . yt-dlp
 
 # Copy rest of app context (cookies dir, etc.)
 COPY . .
