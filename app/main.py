@@ -86,6 +86,7 @@ async def root():
         "docs": "/docs",
         "endpoints": {
             "extract": "/api/extract",
+            "download": "/api/download",
             "supported": "/api/supported",
             "health": "/api/health",
         },

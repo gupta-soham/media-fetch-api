@@ -84,6 +84,14 @@ class BaseExtractor(ABC):
             if response.formats:
                 self._classify_formats(response)
                 self._select_best_formats(response, request)
+                # Hint for HLS/DASH: curl would download the playlist; use ffmpeg
+                bc = response.best_combined
+                if bc and (bc.protocol or "").lower() in ("hls", "dash"):
+                    response.download_note = (
+                        "Best format is HLS/DASH (playlist). Use ffmpeg to download: "
+                        "ffmpeg -i \"<url>\" -c copy out.mp4. "
+                        "If segments fail, pass http_headers from best_combined (e.g. Referer, User-Agent) to ffmpeg -headers."
+                    )
 
             return response
         except ExtractionError:
@@ -157,17 +165,26 @@ class BaseExtractor(ABC):
             )
             response.best_audio = audio_formats[0]
 
-        # Select best combined
+        # Select best combined (prefer direct/progressive over HLS/DASH for single-file download)
         if combined_formats:
+            def _direct_first(f):
+                is_streaming = (f.protocol or "").lower() in ("hls", "dash")
+                return (1 if not is_streaming else 0, f.height or 0, f.width or 0, f.tbr or 0)
+
             target_height = self._quality_to_height(request.quality)
             if target_height and request.quality != Quality.BEST:
-                combined_formats.sort(key=lambda f: abs((f.height or 0) - target_height))
-            else:
                 combined_formats.sort(
-                    key=lambda f: (f.height or 0, f.width or 0, f.tbr or 0),
-                    reverse=True,
+                    key=lambda f: (
+                        1 if (f.protocol or "").lower() not in ("hls", "dash") else 0,
+                        abs((f.height or 0) - target_height),
+                    )
                 )
+            else:
+                combined_formats.sort(key=lambda f: _direct_first(f), reverse=True)
             response.best_combined = combined_formats[0]
+        elif response.best_video:
+            # No combined (e.g. YouTube adaptive-only): use best video as fallback so client gets a URL
+            response.best_combined = response.best_video
 
         # If no best_audio from audio-only formats, use audio from combined
         if not response.best_audio and combined_formats:

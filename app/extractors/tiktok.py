@@ -21,6 +21,7 @@ from ..models.response import (
 )
 from ..utils.helpers import (
     extract_json_from_html,
+    extract_json_from_script,
     float_or_none,
     format_date,
     int_or_none,
@@ -94,28 +95,63 @@ class TikTokExtractor(BaseExtractor):
         )
 
     async def _extract_from_webpage(self, video_id: str, url: str, user: str) -> ExtractResponse:
-        """Extract data from TikTok webpage using __UNIVERSAL_DATA_FOR_REHYDRATION__."""
-        # Build canonical URL
+        """Extract data from TikTok webpage using __UNIVERSAL_DATA_FOR_REHYDRATION__.
+        Tries multiple URL patterns (like Cobalt: @i/video) and does not hard-fail on /login
+        redirect; falls back to embed and other methods before raising.
+        """
+        # Cobalt uses @i/video unconditionally for the main request; we try user URL first then @i
+        urls_to_try = []
         if user:
-            page_url = f"https://www.tiktok.com/@{user}/video/{video_id}"
-        else:
-            page_url = url if "tiktok.com" in url else f"https://www.tiktok.com/video/{video_id}"
+            urls_to_try.append(f"https://www.tiktok.com/@{user}/video/{video_id}")
+        urls_to_try.append(f"https://www.tiktok.com/@i/video/{video_id}")
+        if url and "tiktok.com" in url and url not in urls_to_try:
+            urls_to_try.append(url)
 
         headers = dict(_TIKTOK_HEADERS)
         if self._has_cookies():
             headers["Cookie"] = self._get_cookie_header()
 
-        html = await self._download_webpage(page_url, headers=headers)
-
-        # Extract __UNIVERSAL_DATA_FOR_REHYDRATION__
-        universal_data = extract_json_from_html(html, "__UNIVERSAL_DATA_FOR_REHYDRATION__")
+        universal_data = None
+        html = None
+        for page_url in urls_to_try:
+            response = await self.http.get(page_url, headers=headers)
+            html = response.text
+            universal_data = extract_json_from_html(html, "__UNIVERSAL_DATA_FOR_REHYDRATION__")
+            if not universal_data:
+                universal_data = extract_json_from_html(html, "SIGI_STATE")
+            if not universal_data:
+                universal_data = extract_json_from_script(html, "__UNIVERSAL_DATA_FOR_REHYDRATION__")
+            if not universal_data:
+                universal_data = extract_json_from_script(html, "SIGI_STATE")
+            if universal_data:
+                break
 
         if not universal_data:
-            # Try SIGI_STATE (older format)
-            universal_data = extract_json_from_html(html, "SIGI_STATE")
-
-        if not universal_data:
+            try:
+                return await self._extract_from_embed(video_id)
+            except Exception:
+                pass
             raise ExtractionError("Could not find video data in TikTok page")
+
+        video_detail = traverse_obj(universal_data, ("__DEFAULT_SCOPE__", "webapp.video-detail"))
+        if isinstance(video_detail, dict):
+            status_msg = video_detail.get("statusMsg") or video_detail.get("status_msg")
+            status_code = int_or_none(video_detail.get("statusCode"))
+            if status_msg:
+                raise ExtractionError(f"Video unavailable: {status_msg}", error_code="tiktok.unavailable")
+            # 10204 = IP blocked. Try embed as alternate endpoint before failing (yt-dlp has no rotation; suggests proxy/cookies).
+            if status_code == 10204:
+                try:
+                    return await self._extract_from_embed(video_id)
+                except Exception:
+                    raise ExtractionError(
+                        "IP address blocked. Use cookies (cookies/tiktok.txt) or a different network/VPN.",
+                        error_code="tiktok.ip_blocked",
+                    )
+            if status_code == 10216:
+                raise ExtractionError("Private post", error_code="tiktok.private_post")
+            if status_code == 10222:
+                raise ExtractionError("Private account", error_code="tiktok.private_account")
 
         # Navigate to video data
         # New format: __DEFAULT_SCOPE__["webapp.video-detail"]
@@ -150,6 +186,9 @@ class TikTokExtractor(BaseExtractor):
         if not video_data:
             raise ExtractionError("Could not parse TikTok video data from page")
 
+        if video_data.get("isContentClassified"):
+            raise ExtractionError("Age-restricted content", error_code="tiktok.age_restricted")
+
         return self._parse_video_data(video_data, video_id)
 
     async def _extract_from_embed(self, video_id: str) -> ExtractResponse:
@@ -179,21 +218,40 @@ class TikTokExtractor(BaseExtractor):
         # Extract video info
         video = data.get("video", {})
 
-        # Direct video URL
+        # Direct video URL variants
         play_addr = video.get("playAddr") or video.get("play_addr")
+        play_addr_h264 = video.get("play_addr_h264") or video.get("playAddrH264")
+        play_addr_bytevc1 = video.get("play_addr_bytevc1") or video.get("playAddrBytevc1")
         download_addr = video.get("downloadAddr") or video.get("download_addr")
-        bitrate_info = video.get("bitrateInfo", [])
+        bitrate_info = (
+            video.get("bitrateInfo")
+            or video.get("bitrate_info")
+            or video.get("bit_rate")
+            or []
+        )
 
         # Get dimensions
         width = int_or_none(video.get("width"))
         height = int_or_none(video.get("height"))
         duration = float_or_none(video.get("duration"))
 
+        def addr_to_url(addr: object) -> str | None:
+            if isinstance(addr, str):
+                return addr
+            if isinstance(addr, dict):
+                url_list = addr.get("UrlList") or addr.get("url_list")
+                if isinstance(url_list, list) and url_list:
+                    return url_list[-1]
+                return addr.get("url")
+            return None
+
         # Add bitrate variants
         for br_info in bitrate_info:
-            br_url = traverse_obj(br_info, ("PlayAddr", "UrlList", -1))
+            br_url = traverse_obj(br_info, ("PlayAddr", "UrlList", -1)) or traverse_obj(
+                br_info, ("PlayAddr", "UrlList", 0)
+            )
             if not br_url:
-                br_url = traverse_obj(br_info, ("PlayAddr", "UrlList", 0))
+                br_url = addr_to_url(br_info.get("play_addr") or br_info.get("PlayAddr"))
             if br_url:
                 codec = br_info.get("CodecType", "")
                 gear = br_info.get("GearName", "")
@@ -215,39 +273,29 @@ class TikTokExtractor(BaseExtractor):
                     )
                 )
 
-        # Add main play URL if no bitrate info
+        # Add main play URLs if missing bitrate info
         if not formats:
-            if isinstance(play_addr, str):
-                play_url = play_addr
-            elif isinstance(play_addr, dict):
-                play_url = traverse_obj(play_addr, ("UrlList", -1)) or traverse_obj(
-                    play_addr, ("UrlList", 0)
-                )
-            else:
-                play_url = None
-
-            if play_url:
-                formats.append(
-                    FormatInfo(
-                        url=play_url,
-                        format_id="play",
-                        ext="mp4",
-                        width=width,
-                        height=height,
-                        format_type=FormatType.COMBINED,
+            for label, addr in (
+                ("play", play_addr),
+                ("play_h264", play_addr_h264),
+                ("play_bytevc1", play_addr_bytevc1),
+            ):
+                play_url = addr_to_url(addr)
+                if play_url:
+                    formats.append(
+                        FormatInfo(
+                            url=play_url,
+                            format_id=label,
+                            ext="mp4",
+                            width=width,
+                            height=height,
+                            format_type=FormatType.COMBINED,
+                        )
                     )
-                )
 
         # Add download URL
         if download_addr:
-            if isinstance(download_addr, str):
-                dl_url = download_addr
-            elif isinstance(download_addr, dict):
-                dl_url = traverse_obj(download_addr, ("UrlList", -1)) or traverse_obj(
-                    download_addr, ("UrlList", 0)
-                )
-            else:
-                dl_url = None
+            dl_url = addr_to_url(download_addr)
 
             if dl_url and not any(f.url == dl_url for f in formats):
                 formats.append(
@@ -282,6 +330,14 @@ class TikTokExtractor(BaseExtractor):
 
         if not formats:
             raise ExtractionError("No playable formats found in TikTok video data")
+
+        # Attach sid_tt cookie to formats when available
+        if self._has_cookies():
+            sid_tt = self._get_cookie("sid_tt")
+            if sid_tt:
+                for fmt in formats:
+                    fmt.http_headers = fmt.http_headers or {}
+                    fmt.http_headers["Cookie"] = f"sid_tt={sid_tt}"
 
         # Build metadata
         author = data.get("author", {})

@@ -83,6 +83,10 @@ class ExtractResponse(BaseModel):
     )
     metadata: MediaMetadata | None = Field(None, description="Media metadata")
 
+    download_note: str | None = Field(
+        None,
+        description="Hint when best_combined is HLS/DASH: use ffmpeg to download",
+    )
 
 class ErrorResponse(BaseModel):
     """Error response model."""

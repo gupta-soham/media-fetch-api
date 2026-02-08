@@ -119,8 +119,10 @@ _INNERTUBE_CLIENTS = {
 # Clients that return deciphered URLs (no signature decryption needed)
 _CLIENTS_NO_CIPHER = {"IOS", "ANDROID", "ANDROID_VR", "YTSTUDIO_ANDROID", "YTMUSIC_ANDROID"}
 
-# Default client order to try
+# Default client order when no cookies
 _DEFAULT_CLIENTS = ["android_vr", "web", "ios"]
+# When cookies are present, try web first so auth is used and bot check is avoided
+_CLIENTS_WITH_COOKIES = ["web", "web_safari", "android_vr", "ios"]
 
 # Codec configurations
 _CODEC_MAP = {
@@ -245,8 +247,9 @@ class YouTubeExtractor(BaseExtractor):
         # Step 2: Fetch player response via InnerTube API
         player_response = None
         used_client = None
+        clients_to_try = _CLIENTS_WITH_COOKIES if self._has_cookies() else _DEFAULT_CLIENTS
 
-        for client_name in _DEFAULT_CLIENTS:
+        for client_name in clients_to_try:
             try:
                 pr = await self._fetch_innertube_player(video_id, client_name, ytcfg)
                 if pr and pr.get("playabilityStatus", {}).get("status") == "OK":
