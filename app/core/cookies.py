@@ -1,9 +1,12 @@
 """
 Cookie management for per-platform authentication.
 
-Supports loading cookies from Netscape/Mozilla format files stored in the
-cookies/ directory. Each platform has its own cookie file
-(e.g. cookies/youtube.txt).
+Supports loading cookies from:
+- Playwright storage state JSON (playwright-cli state-save): cookies/<service>.json
+- Netscape/Mozilla format: cookies/<service>.txt
+
+Per service, .json is preferred when both exist. Each platform has its own file
+(e.g. cookies/instagram.json or cookies/instagram.txt).
 
 Robustness features:
 - Graceful handling of corrupt / malformed cookie files (never crashes,
@@ -16,6 +19,7 @@ Robustness features:
 - set_cookies() for runtime cookie injection (e.g. after OAuth refresh).
 """
 
+import json
 import logging
 import threading
 import time
@@ -68,7 +72,11 @@ class CookieManager:
     # ------------------------------------------------------------------
 
     def _load_all(self):
-        """Load all cookie files from the cookie directory."""
+        """Load all cookie files from the cookie directory.
+
+        For each service in COOKIE_SERVICES, prefers Playwright state JSON
+        (cookies/<service>.json) if present, otherwise Netscape .txt.
+        """
         if not self._cookie_dir.exists():
             logger.info(
                 "Cookie directory %s does not exist, creating it",
@@ -77,10 +85,39 @@ class CookieManager:
             self._cookie_dir.mkdir(parents=True, exist_ok=True)
             return
 
-        for cookie_file in self._cookie_dir.glob("*.txt"):
-            service = cookie_file.stem
-            if service in COOKIE_SERVICES:
-                self._load_cookie_file(service, cookie_file)
+        for service in COOKIE_SERVICES:
+            json_path = self._cookie_dir / f"{service}.json"
+            txt_path = self._cookie_dir / f"{service}.txt"
+            if json_path.exists():
+                self._load_playwright_state(service, json_path)
+            elif txt_path.exists():
+                self._load_cookie_file(service, txt_path)
+
+    def _load_playwright_state(self, service: str, path: Path):
+        """Load cookies from a Playwright storage state JSON file.
+
+        Format: { "cookies": [ { "name", "value", "domain", "path", "expires", ... }, ... ] }
+        Saved via: playwright-cli open <url>  # log in  # playwright-cli state-save cookies/<service>.json
+        """
+        self._load_errors.pop(service, None)
+        self._jars.pop(service, None)
+        try:
+            raw = path.read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("Failed to load Playwright state for %s (%s): %s", service, path, e)
+            self._load_errors[service] = str(e)
+            return
+        cookies_list = data.get("cookies") if isinstance(data, dict) else None
+        if not isinstance(cookies_list, list):
+            logger.warning("Playwright state for %s has no 'cookies' array", service)
+            return
+        cookies = {c.get("name", ""): (c.get("value") or "") for c in cookies_list if c.get("name")}
+        if not cookies:
+            logger.warning("No cookies in Playwright state for %s", service)
+            return
+        self._raw_cookies[service] = cookies
+        logger.info("Loaded %d cookies for %s from Playwright state %s", len(cookies), service, path)
 
     def _load_cookie_file(self, service: str, path: Path):
         """Load a single cookie file in Netscape/Mozilla format."""
@@ -241,14 +278,17 @@ class CookieManager:
         the file on disk.
         """
         if service:
-            cookie_file = self._cookie_dir / f"{service}.txt"
-            if cookie_file.exists():
+            json_path = self._cookie_dir / f"{service}.json"
+            txt_path = self._cookie_dir / f"{service}.txt"
+            if json_path.exists():
                 logger.info("Reloading cookies for %s", service)
-                self._load_cookie_file(service, cookie_file)
+                self._load_playwright_state(service, json_path)
+            elif txt_path.exists():
+                logger.info("Reloading cookies for %s", service)
+                self._load_cookie_file(service, txt_path)
             else:
                 logger.warning(
-                    "Cookie file %s does not exist, clearing in-memory cookies for %s",
-                    cookie_file,
+                    "No cookie file for %s (checked .json and .txt), clearing in-memory cookies",
                     service,
                 )
                 self.clear_cookies(service)

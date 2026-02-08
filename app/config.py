@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 7652
     debug: bool = False
 
     cookie_dir: str = "./cookies"
@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     )
     # Comma-separated origins for CORS (e.g. "https://app.example.com"). Empty = allow "*" with no credentials.
     cors_origins: str = ""
+
+    # Optional: Vimeo OAuth (create app at https://developer.vimeo.com/apps). If set, used instead of built-in client.
+    vimeo_client_id: str = ""
+    vimeo_client_secret: str = ""
 
     class Config:
         env_file = ".env"
