@@ -89,7 +89,7 @@ class BaseExtractor(ABC):
                 if bc and (bc.protocol or "").lower() in ("hls", "dash"):
                     response.download_note = (
                         "Best format is HLS/DASH (playlist). Use ffmpeg to download: "
-                        "ffmpeg -i \"<url>\" -c copy out.mp4. "
+                        'ffmpeg -i "<url>" -c copy out.mp4. '
                         "If segments fail, pass http_headers from best_combined (e.g. Referer, User-Agent) to ffmpeg -headers."
                     )
 
@@ -167,6 +167,7 @@ class BaseExtractor(ABC):
 
         # Select best combined (prefer direct/progressive over HLS/DASH for single-file download)
         if combined_formats:
+
             def _direct_first(f):
                 is_streaming = (f.protocol or "").lower() in ("hls", "dash")
                 return (1 if not is_streaming else 0, f.height or 0, f.width or 0, f.tbr or 0)

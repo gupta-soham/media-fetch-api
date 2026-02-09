@@ -120,7 +120,9 @@ class TikTokExtractor(BaseExtractor):
             if not universal_data:
                 universal_data = extract_json_from_html(html, "SIGI_STATE")
             if not universal_data:
-                universal_data = extract_json_from_script(html, "__UNIVERSAL_DATA_FOR_REHYDRATION__")
+                universal_data = extract_json_from_script(
+                    html, "__UNIVERSAL_DATA_FOR_REHYDRATION__"
+                )
             if not universal_data:
                 universal_data = extract_json_from_script(html, "SIGI_STATE")
             if universal_data:
@@ -138,7 +140,9 @@ class TikTokExtractor(BaseExtractor):
             status_msg = video_detail.get("statusMsg") or video_detail.get("status_msg")
             status_code = int_or_none(video_detail.get("statusCode"))
             if status_msg:
-                raise ExtractionError(f"Video unavailable: {status_msg}", error_code="tiktok.unavailable")
+                raise ExtractionError(
+                    f"Video unavailable: {status_msg}", error_code="tiktok.unavailable"
+                )
             # 10204 = IP blocked. Try embed as alternate endpoint before failing (yt-dlp has no rotation; suggests proxy/cookies).
             if status_code == 10204:
                 try:
@@ -224,10 +228,7 @@ class TikTokExtractor(BaseExtractor):
         play_addr_bytevc1 = video.get("play_addr_bytevc1") or video.get("playAddrBytevc1")
         download_addr = video.get("downloadAddr") or video.get("download_addr")
         bitrate_info = (
-            video.get("bitrateInfo")
-            or video.get("bitrate_info")
-            or video.get("bit_rate")
-            or []
+            video.get("bitrateInfo") or video.get("bitrate_info") or video.get("bit_rate") or []
         )
 
         # Get dimensions

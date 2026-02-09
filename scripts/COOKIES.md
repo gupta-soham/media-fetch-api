@@ -54,6 +54,12 @@ For **Netscape `.txt`** (e.g. for yt-dlp), export from a browser extension (e.g.
 - **Format (Netscape):** One cookie per line: `domain	TRUE/FALSE	path	TRUE/FALSE	expiry	name	value` (tab-separated). Include `.youtube.com` and `.google.com` (and optionally `accounts.google.com`) for a logged-in session.
 - **Quality still low?** Export a **fresh** `youtube.txt` while logged into YouTube (browser extension), replace `cookies/youtube.txt` on the server, and restart the API. Stale or invalid cookies can cause yt-dlp to fall back to lower formats.
 
+### Are cookies actually passed?
+
+- **Extractor (YouTube watch page / InnerTube):** The API loads `cookies/youtube.txt` into the cookie manager and sends a `Cookie` header on every request to `youtube.com`. So yes, they are passed.
+- **yt-dlp fallback:** The server runs `yt-dlp --cookies /absolute/path/to/cookies/youtube.txt`. yt-dlp reads that Netscape file and uses it for requests to YouTube. So yes, the same file is passed.
+- **403 on “fragment” download:** If yt-dlp can list formats but then fails with “HTTP 403” when downloading HLS fragments, the cookies are still being used for the initial YouTube request. The fragment URLs are on `googlevideo.com`; some environments get 403 there (e.g. IP or datacenter blocking). Refreshing cookies and running the API from a residential or previously working network often helps.
+
 ## Security
 
 - Do not commit `cookies/*.json` or `cookies/*.txt` if they contain session data.

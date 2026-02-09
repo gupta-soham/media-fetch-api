@@ -13,6 +13,7 @@ Supports:
 import logging
 from urllib.parse import unquote
 
+from ..config import get_settings
 from ..core.dash_parser import parse_mpd
 from ..models.enums import FormatType, Platform
 from ..models.request import ExtractRequest
@@ -21,7 +22,6 @@ from ..models.response import (
     FormatInfo,
     MediaMetadata,
 )
-from ..config import get_settings
 from ..utils.helpers import (
     float_or_none,
     format_date,
@@ -168,6 +168,7 @@ class VimeoExtractor(BaseExtractor):
             "Referer": f"https://player.vimeo.com/video/{video_id}",
             "Origin": "https://player.vimeo.com",
         }
+
     async def _extract_from_player_config(self, video_id: str) -> ExtractResponse:
         """Fallback: parse player config from the public player page or direct config URL."""
         player_url = f"https://player.vimeo.com/video/{video_id}"
@@ -204,9 +205,7 @@ class VimeoExtractor(BaseExtractor):
             config_url = f"https://player.vimeo.com/video/{video_id}/config"
 
         config_url = unquote(
-            config_url.replace("\\u0026", "&")
-            .replace("\\/", "/")
-            .replace("&amp;", "&")
+            config_url.replace("\\u0026", "&").replace("\\/", "/").replace("&amp;", "&")
         )
 
         config = None
@@ -236,8 +235,10 @@ class VimeoExtractor(BaseExtractor):
         duration = float_or_none(video.get("duration"))
 
         thumbs = video.get("thumbs") or {}
-        thumbnail = thumbs.get("base") or thumbs.get("640") or next(
-            (v for v in thumbs.values() if isinstance(v, str)), None
+        thumbnail = (
+            thumbs.get("base")
+            or thumbs.get("640")
+            or next((v for v in thumbs.values() if isinstance(v, str)), None)
         )
 
         formats: list[FormatInfo] = []

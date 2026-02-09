@@ -215,6 +215,7 @@ class InstagramExtractor(BaseExtractor):
 
     def _extract_html_tokens(self, html: str) -> dict[str, str]:
         """Extract common tokens needed for GraphQL requests from HTML."""
+
         def first_match(patterns: list[str]) -> str | None:
             for pattern in patterns:
                 match = re.search(pattern, html)
@@ -223,42 +224,55 @@ class InstagramExtractor(BaseExtractor):
             return None
 
         tokens: dict[str, str] = {}
-        tokens["lsd"] = first_match(
-            [
-                r'name="lsd"\s+value="([^"]+)"',
-                r'"LSD"\s*:\s*\{"token"\s*:\s*"([^"]+)"',
-            ]
-        ) or ""
-        tokens["csrf"] = first_match(
-            [
-                r'"csrf_token"\s*:\s*"([^"]+)"',
-                r'"csrf_token"\s*:\s*\\?"([^"]+)"',
-            ]
-        ) or ""
-        tokens["jazoest"] = first_match(
-            [
-                r'name="jazoest"\s+value="([^"]+)"',
-                r'"jazoest"\s*:\s*"([^"]+)"',
-            ]
-        ) or ""
-        tokens["dtsg"] = first_match(
-            [
-                r'name="fb_dtsg"\s+value="([^"]+)"',
-                r'"DTSGInitialData"\s*:\s*\{"token"\s*:\s*"([^"]+)"',
-                r'"dtsg"\s*:\s*\{"token"\s*:\s*"([^"]+)"',
-            ]
-        ) or ""
+        tokens["lsd"] = (
+            first_match(
+                [
+                    r'name="lsd"\s+value="([^"]+)"',
+                    r'"LSD"\s*:\s*\{"token"\s*:\s*"([^"]+)"',
+                ]
+            )
+            or ""
+        )
+        tokens["csrf"] = (
+            first_match(
+                [
+                    r'"csrf_token"\s*:\s*"([^"]+)"',
+                    r'"csrf_token"\s*:\s*\\?"([^"]+)"',
+                ]
+            )
+            or ""
+        )
+        tokens["jazoest"] = (
+            first_match(
+                [
+                    r'name="jazoest"\s+value="([^"]+)"',
+                    r'"jazoest"\s*:\s*"([^"]+)"',
+                ]
+            )
+            or ""
+        )
+        tokens["dtsg"] = (
+            first_match(
+                [
+                    r'name="fb_dtsg"\s+value="([^"]+)"',
+                    r'"DTSGInitialData"\s*:\s*\{"token"\s*:\s*"([^"]+)"',
+                    r'"dtsg"\s*:\s*\{"token"\s*:\s*"([^"]+)"',
+                ]
+            )
+            or ""
+        )
         tokens["mid"] = first_match([r'"mid"\s*:\s*"([^"]+)"']) or ""
         tokens["ig_did"] = first_match([r'"ig_did"\s*:\s*"([^"]+)"']) or ""
-        tokens["app_id"] = first_match(
-            [
-                r'"X-IG-App-ID"\s*:\s*"([^"]+)"',
-                r'"appId"\s*:\s*"([^"]+)"',
-            ]
-        ) or _IG_APP_ID
-        tokens["bloks_version_id"] = first_match(
-            [r'"X-Bloks-Version-Id"\s*:\s*"([^"]+)"']
-        ) or ""
+        tokens["app_id"] = (
+            first_match(
+                [
+                    r'"X-IG-App-ID"\s*:\s*"([^"]+)"',
+                    r'"appId"\s*:\s*"([^"]+)"',
+                ]
+            )
+            or _IG_APP_ID
+        )
+        tokens["bloks_version_id"] = first_match([r'"X-Bloks-Version-Id"\s*:\s*"([^"]+)"']) or ""
         tokens["__spin_r"] = first_match([r'"__spin_r"\s*:\s*(\d+)']) or ""
         tokens["__spin_b"] = first_match([r'"__spin_b"\s*:\s*"([^"]+)"']) or ""
         tokens["__spin_t"] = first_match([r'"__spin_t"\s*:\s*(\d+)']) or ""
@@ -321,7 +335,9 @@ class InstagramExtractor(BaseExtractor):
             else "Instagram Post"
         )
 
-        def add_video_fmt(video_url: str | None, width: int | None, height: int | None, fmt_id: str):
+        def add_video_fmt(
+            video_url: str | None, width: int | None, height: int | None, fmt_id: str
+        ):
             if not video_url:
                 return
             formats.append(
@@ -335,7 +351,9 @@ class InstagramExtractor(BaseExtractor):
                 )
             )
 
-        def add_image_fmt(image_url: str | None, width: int | None, height: int | None, fmt_id: str):
+        def add_image_fmt(
+            image_url: str | None, width: int | None, height: int | None, fmt_id: str
+        ):
             if not image_url:
                 return
             formats.append(
@@ -649,7 +667,9 @@ class InstagramExtractor(BaseExtractor):
 
         return self._build_story_response(reels, story_pk, user=None)
 
-    def _build_story_response(self, reels: object, story_pk: str, user: str | None) -> ExtractResponse:
+    def _build_story_response(
+        self, reels: object, story_pk: str, user: str | None
+    ) -> ExtractResponse:
         """Build ExtractResponse for story reels payloads."""
         formats: list[FormatInfo] = []
         title = f"Instagram Story by @{user}" if user else "Instagram Story"

@@ -88,6 +88,7 @@ class ExtractResponse(BaseModel):
         description="Hint when best_combined is HLS/DASH: use ffmpeg to download",
     )
 
+
 class ErrorResponse(BaseModel):
     """Error response model."""
 

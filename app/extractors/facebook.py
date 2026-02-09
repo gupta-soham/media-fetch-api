@@ -13,7 +13,7 @@ Supports:
 import json
 import logging
 import re
-from urllib.parse import unquote, urljoin
+from urllib.parse import unquote
 
 from ..core.dash_parser import parse_mpd
 from ..models.enums import FormatType, Platform
@@ -214,7 +214,7 @@ class FacebookExtractor(BaseExtractor):
             "checkpoint",  # checkpoint pages
             'id="login_form"',
             'action="/login',
-            "name=\"login\"",
+            'name="login"',
             "Please log in to continue",
             "You must log in to continue",
         ]

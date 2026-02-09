@@ -2,6 +2,7 @@
 API route definitions for the Media Fetch API.
 """
 
+import contextlib
 import logging
 import tempfile
 from pathlib import Path
@@ -175,9 +176,13 @@ async def stream_media(url: str, platform: str = ""):
         headers["Origin"] = "https://www.youtube.com"
         # Match User-Agent to the client that produced the URL (c= in query string)
         if "&c=ANDROID_VR" in decoded or "&c=ANDROID" in decoded:
-            headers["User-Agent"] = "com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 11; eureka-user Build/SQ3A.220605.009.A1) gzip"
+            headers["User-Agent"] = (
+                "com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 11; eureka-user Build/SQ3A.220605.009.A1) gzip"
+            )
         else:
-            headers["User-Agent"] = "com.google.ios.youtube/21.02.3 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"
+            headers["User-Agent"] = (
+                "com.google.ios.youtube/21.02.3 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"
+            )
     elif cookie_header:
         headers["Cookie"] = cookie_header
 
@@ -211,8 +216,6 @@ async def download_media(url: str):
     Single-call download: extract, then stream or run yt-dlp on the server.
     Returns the media file; client just saves the response body.
     """
-    from urllib.parse import urlparse
-
     try:
         decoded = unquote(url.strip())
         if not decoded.startswith(("http://", "https://")):
@@ -232,7 +235,9 @@ async def download_media(url: str):
     try:
         extractor = get_extractor(match_result.platform)
     except ExtractionError as e:
-        raise HTTPException(status_code=400, detail={"error": str(e), "error_code": "extractor.unavailable"})
+        raise HTTPException(
+            status_code=400, detail={"error": str(e), "error_code": "extractor.unavailable"}
+        )
 
     request = ExtractRequest(url=decoded)
     try:
@@ -268,20 +273,24 @@ async def download_media(url: str):
                     },
                 )
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     tmp_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-        raise HTTPException(status_code=502, detail={"error": str(e), "error_code": "extract.failed"})
+        raise HTTPException(
+            status_code=502, detail={"error": str(e), "error_code": "extract.failed"}
+        )
 
-    platform = response.platform.value if hasattr(response, "platform") else match_result.platform.value
+    platform = (
+        response.platform.value if hasattr(response, "platform") else match_result.platform.value
+    )
     best_url = (
         (response.best_combined.url if response.best_combined else None)
         or (response.best_video.url if response.best_video else None)
         or (response.formats[0].url if response.formats else None)
     )
     if not best_url:
-        raise HTTPException(status_code=502, detail={"error": "No stream URL in response", "error_code": "no_url"})
+        raise HTTPException(
+            status_code=502, detail={"error": "No stream URL in response", "error_code": "no_url"}
+        )
 
     # YouTube: try stream proxy first; on failure run yt-dlp on server (uses server cookies)
     if platform == "youtube" and "googlevideo.com" in best_url:
@@ -291,7 +300,9 @@ async def download_media(url: str):
             "User-Agent": "com.google.ios.youtube/21.02.3 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
         }
         if "&c=ANDROID_VR" in best_url or "&c=ANDROID" in best_url:
-            headers["User-Agent"] = "com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 11; eureka-user Build/SQ3A.220605.009.A1) gzip"
+            headers["User-Agent"] = (
+                "com.google.android.apps.youtube.vr.oculus/1.71.26 (Linux; U; Android 11; eureka-user Build/SQ3A.220605.009.A1) gzip"
+            )
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=120.0) as client:
                 resp = await client.get(best_url, headers=headers)
@@ -328,17 +339,16 @@ async def download_media(url: str):
                 headers={"Cache-Control": "no-store"},
             )
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 tmp_path.unlink(missing_ok=True)
-            except Exception:
-                pass
 
     # Non-YouTube or non-googlevideo: stream the URL with cookies if needed
-    parsed = urlparse(best_url)
-    host = (parsed.netloc or "").lower().split(":")[0]
     cookies_dict = get_cookie_manager().get_cookies(platform) or {}
     cookie_header = "; ".join(f"{k}={v}" for k, v in cookies_dict.items()) if cookies_dict else None
-    headers = {"User-Agent": get_settings().user_agent or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36"}
+    headers = {
+        "User-Agent": get_settings().user_agent
+        or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36"
+    }
     if cookie_header:
         headers["Cookie"] = cookie_header
     try:
@@ -351,7 +361,9 @@ async def download_media(url: str):
         raise
     except Exception as e:
         logger.warning("Stream failed in /download: %s", e)
-        raise HTTPException(status_code=502, detail={"error": str(e), "error_code": "stream.failed"})
+        raise HTTPException(
+            status_code=502, detail={"error": str(e), "error_code": "stream.failed"}
+        )
     return Response(
         content=content,
         media_type="application/octet-stream",

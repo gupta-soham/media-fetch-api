@@ -19,6 +19,7 @@ A self-contained Python FastAPI server that extracts direct media URLs from **12
 - [Deployment](#deployment)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
+- [Changelog](#changelog)
 - [Attribution](#attribution)
 
 ---
@@ -27,20 +28,20 @@ A self-contained Python FastAPI server that extracts direct media URLs from **12
 
 ```mermaid
 flowchart TD
-    Client["Client\nPOST /api/extract"] --> Router["FastAPI Router\napp/routes/api.py"]
-    Router --> URLMatcher["URL Matcher\nIdentify platform + extract ID"]
+    Client["Client<br/>POST /api/extract"] --> Router["FastAPI Router<br/>app/routes/api.py"]
+    Router --> URLMatcher["URL Matcher<br/>Identify platform + extract ID"]
     URLMatcher -->|No match| Error400["400: Unsupported URL"]
-    URLMatcher -->|Match found| ExtractorFactory["Extractor Factory\nget_extractor(platform)"]
-    ExtractorFactory --> Extractor["Platform Extractor\n.extract(id, url, request)"]
+    URLMatcher -->|Match found| ExtractorFactory["Extractor Factory<br/>get_extractor(platform)"]
+    ExtractorFactory --> Extractor["Platform Extractor<br/>.extract(id, url, request)"]
 
-    Extractor --> HTTPClient["Async HTTP Client\nhttpx with retries + cookies"]
-    Extractor --> JSInterp["JS Interpreter\nYouTube cipher only"]
-    Extractor --> HLSParser["HLS Parser\nM3U8 master/media"]
-    Extractor --> DASHParser["DASH Parser\nMPD manifests"]
+    Extractor --> HTTPClient["Async HTTP Client<br/>httpx with retries + cookies"]
+    Extractor --> JSInterp["JS Interpreter<br/>YouTube cipher only"]
+    Extractor --> HLSParser["HLS Parser<br/>M3U8 master/media"]
+    Extractor --> DASHParser["DASH Parser<br/>MPD manifests"]
 
-    HTTPClient --> ExternalAPI["External APIs\nInnerTube, GraphQL, REST"]
-    Extractor --> FormatSelector["Format Selector\nClassify + pick best"]
-    FormatSelector --> Response["ExtractResponse\nJSON with formats + metadata"]
+    HTTPClient --> ExternalAPI["External APIs<br/>InnerTube, GraphQL, REST"]
+    Extractor --> FormatSelector["Format Selector<br/>Classify + pick best"]
+    FormatSelector --> Response["ExtractResponse<br/>JSON with formats + metadata"]
     Response --> Client
 
     subgraph extractors [12 Platform Extractors]
@@ -68,27 +69,27 @@ flowchart TD
 flowchart LR
     subgraph core [Core Layer]
         direction TB
-        UM["url_matcher.py\nPattern matching"]
-        HC["http_client.py\nAsync requests"]
-        CK["cookies.py\nPer-platform auth"]
-        JS["js_interpreter.py\nYouTube cipher"]
-        M3["m3u8_parser.py\nHLS playlists"]
-        DP["dash_parser.py\nMPD manifests"]
-        FF["ffmpeg.py\nAudio conversion"]
+        UM["url_matcher.py<br/>Pattern matching"]
+        HC["http_client.py<br/>Async requests"]
+        CK["cookies.py<br/>Per-platform auth"]
+        JS["js_interpreter.py<br/>YouTube cipher"]
+        M3["m3u8_parser.py<br/>HLS playlists"]
+        DP["dash_parser.py<br/>MPD manifests"]
+        FF["ffmpeg.py<br/>Audio conversion"]
     end
 
     subgraph models [Models Layer]
         direction TB
-        RQ["ExtractRequest\nurl, quality, format"]
-        RS["ExtractResponse\nformats, metadata"]
-        FI["FormatInfo\nurl, codec, size"]
-        EN["Enums\nPlatform, Quality"]
+        RQ["ExtractRequest<br/>url, quality, format"]
+        RS["ExtractResponse<br/>formats, metadata"]
+        FI["FormatInfo<br/>url, codec, size"]
+        EN["Enums<br/>Platform, Quality"]
     end
 
     subgraph ext [Extractors Layer]
         direction TB
-        BE["BaseExtractor\nShared utilities"]
-        PE["12 Platform\nExtractors"]
+        BE["BaseExtractor<br/>Shared utilities"]
+        PE["12 Platform<br/>Extractors"]
     end
 
     core --> ext
@@ -123,12 +124,12 @@ Short links and alternate domains are automatically resolved before matching:
 flowchart LR
     A1["youtu.be/ID"] --> B1["youtube.com/watch?v=ID"]
     A2["x.com/user/status/ID"] --> B2["twitter.com/user/status/ID"]
-    A3["vm.tiktok.com/CODE"] --> B3["tiktok.com/@user/video/ID\n(via redirect)"]
-    A4["fb.watch/CODE"] --> B4["facebook.com/...ID\n(via redirect)"]
-    A5["pin.it/CODE"] --> B5["pinterest.com/pin/ID\n(via redirect)"]
-    A6["v.redd.it/ID"] --> B6["reddit.com/r/.../comments/ID\n(via redirect)"]
+    A3["vm.tiktok.com/CODE"] --> B3["tiktok.com/@user/video/ID<br/>(via redirect)"]
+    A4["fb.watch/CODE"] --> B4["facebook.com/...ID<br/>(via redirect)"]
+    A5["pin.it/CODE"] --> B5["pinterest.com/pin/ID<br/>(via redirect)"]
+    A6["v.redd.it/ID"] --> B6["reddit.com/r/.../comments/ID<br/>(via redirect)"]
     A7["vxtwitter.com"] --> B2
-    A8["on.soundcloud.com"] --> B8["soundcloud.com/...\n(via redirect)"]
+    A8["on.soundcloud.com"] --> B8["soundcloud.com/...<br/>(via redirect)"]
 ```
 
 ---
@@ -205,6 +206,35 @@ Use **`./download.sh`** from the API project root (or **`./scripts/download.sh`*
   ```
 
 **Server**: Install **yt-dlp** on the API server (e.g. `pip install yt-dlp` or use the Docker image which includes it). Put **cookies** in `cookies/youtube.txt` on the server for better YouTube quality. See [scripts/COOKIES.md](scripts/COOKIES.md).
+
+### Server-side download flow
+
+When you call `GET /api/download?url=...`, the server first tries to extract direct URLs (e.g. via the built-in YouTube extractor). If extraction succeeds, it streams the file when possible; otherwise it runs **yt-dlp** on the server with a 5-level format waterfall so downloads succeed in almost all cases. See the diagram below and [CHANGELOG.md](CHANGELOG.md) for recent behavior.
+
+```mermaid
+flowchart TD
+    A["GET /api/download?url=..."] --> B["Extract (platform extractor)"]
+    B --> C{"Extract OK?"}
+    C -->|Yes| D{"Direct stream OK?"}
+    C -->|No, e.g. YouTube| E["yt-dlp fallback"]
+    D -->|Yes| F["Stream file to client"]
+    D -->|No / 403| E
+
+    E --> G["Run 1: -f bestvideo+bestaudio/best/best/b/worst"]
+    G --> H{"Success?"}
+    H -->|No| I["Run 2: no -f (yt-dlp default)"]
+    I --> J{"Success?"}
+    H -->|Yes| K["Pick output file"]
+    J -->|Yes| K
+    J -->|No| L["Return error"]
+    K --> M{"Need merge or re-encode?"}
+    M -->|Merge video+audio| N["FFmpeg merge → MP4"]
+    M -->|Opus in MP4| O["Re-encode audio to AAC"]
+    M -->|No| P["Copy to output path"]
+    N --> P
+    O --> P
+    P --> F
+```
 
 ---
 
@@ -507,42 +537,42 @@ sequenceDiagram
 
 ### YouTube-Specific Flow
 
-YouTube is the most complex extractor. This diagram shows its internal logic:
+YouTube is the most complex extractor. InnerTube API responses are decoded with UTF-8 (invalid bytes replaced) and then parsed as JSON so that occasional encoding issues do not break extraction; on failure the download flow falls back to yt-dlp. The diagram below shows the extractor logic:
 
 ```mermaid
 flowchart TD
-    Start["extract(video_id)"] --> FetchPage["Fetch /watch?v=ID\nGet player JS URL + ytcfg"]
-    FetchPage --> TryClients["Try InnerTube clients\nandroid_vr -> web -> ios"]
+    Start["extract(video_id)"] --> FetchPage["Fetch /watch?v=ID<br/>Get player JS URL + ytcfg"]
+    FetchPage --> TryClients["Try InnerTube clients<br/>android_vr -> web -> ios"]
 
-    TryClients --> ClientLoop{"Client returned\nstatus OK?"}
+    TryClients --> ClientLoop{"Client returned<br/>status OK?"}
     ClientLoop -->|No| NextClient["Try next client"]
     NextClient --> ClientLoop
     ClientLoop -->|Yes| GotResponse["Player response received"]
     ClientLoop -->|All failed| Error["Raise ExtractionError"]
 
     GotResponse --> StreamingData["Parse streamingData"]
-    StreamingData --> Progressive["Process formats\n(combined streams)"]
-    StreamingData --> Adaptive["Process adaptiveFormats\n(video-only + audio-only)"]
+    StreamingData --> Progressive["Process formats<br/>(combined streams)"]
+    StreamingData --> Adaptive["Process adaptiveFormats<br/>(video-only + audio-only)"]
 
-    Progressive --> CheckCipher{"signatureCipher\npresent?"}
+    Progressive --> CheckCipher{"signatureCipher<br/>present?"}
     Adaptive --> CheckCipher
 
     CheckCipher -->|No| DirectURL["Use URL directly"]
     CheckCipher -->|Yes| Decipher["Decrypt signature"]
 
     Decipher --> DownloadJS["Download player JS"]
-    DownloadJS --> FindFunc["Find cipher function\nvia regex patterns"]
+    DownloadJS --> FindFunc["Find cipher function<br/>via regex patterns"]
     FindFunc --> RunJS["Execute via JS Interpreter"]
     RunJS --> AppendSig["Append &signature= to URL"]
     AppendSig --> DirectURL
 
-    DirectURL --> NSig{"n parameter\npresent?"}
+    DirectURL --> NSig{"n parameter<br/>present?"}
     NSig -->|No| BuildFormat["Build FormatInfo"]
-    NSig -->|Yes| TransformN["Transform n via JS Interpreter\n(throttle bypass)"]
+    NSig -->|Yes| TransformN["Transform n via JS Interpreter<br/>(throttle bypass)"]
     TransformN --> BuildFormat
 
-    BuildFormat --> Classify["Classify: video_only /\naudio_only / combined"]
-    Classify --> SelectBest["Select best formats\nper quality preference"]
+    BuildFormat --> Classify["Classify: video_only /<br/>audio_only / combined"]
+    Classify --> SelectBest["Select best formats<br/>per quality preference"]
     SelectBest --> Response["Return ExtractResponse"]
 ```
 
@@ -639,9 +669,9 @@ When a response contains multiple formats, the API automatically classifies each
 flowchart TD
     Formats["All extracted formats"] --> Classify["Classify each format"]
 
-    Classify --> HasVA{"Has video\nAND audio?"}
+    Classify --> HasVA{"Has video<br/>AND audio?"}
     HasVA -->|Yes| Combined["combined"]
-    HasVA -->|No| HasV{"Has video\nonly?"}
+    HasVA -->|No| HasV{"Has video<br/>only?"}
     HasV -->|Yes| VideoOnly["video_only"]
     HasV -->|No| AudioOnly["audio_only"]
 
@@ -649,9 +679,9 @@ flowchart TD
     VideoOnly --> Best
     AudioOnly --> Best
 
-    Best --> BV["best_video\nHighest resolution match\nfor requested quality"]
-    Best --> BA["best_audio\nHighest bitrate\naudio stream"]
-    Best --> BC["best_combined\nHighest resolution\nmuxed stream"]
+    Best --> BV["best_video<br/>Highest resolution match<br/>for requested quality"]
+    Best --> BA["best_audio<br/>Highest bitrate<br/>audio stream"]
+    Best --> BC["best_combined<br/>Highest resolution<br/>muxed stream"]
 ```
 
 ### Quality Matching Logic
@@ -800,14 +830,14 @@ flowchart LR
         direction TB
         PY["Python 3.12-slim"]
         FF["FFmpeg 5.x"]
-        UV["Uvicorn\nport 8000"]
+        UV["Uvicorn<br/>port 8000"]
         APP["Media Fetch API"]
         PY --> UV --> APP
         FF --> APP
     end
 
-    CK["./cookies/\n(host volume)"] -->|mount| container
-    ENV[".env\n(env vars)"] -->|inject| container
+    CK["./cookies/<br/>(host volume)"] -->|mount| container
+    ENV[".env<br/>(env vars)"] -->|inject| container
     Client["Clients"] -->|":8000"| container
 ```
 
@@ -923,16 +953,16 @@ All formatting, linting, and import sorting is handled by **ruff** via a single 
 flowchart LR
     subgraph hooks [Pre-commit Hooks]
         direction TB
-        H1["ruff format\nCode formatting"]
-        H2["ruff check --fix\nLint + import sort"]
-        H3["trailing-whitespace\nend-of-file-fixer\ncheck-yaml / check-toml"]
+        H1["ruff format<br/>Code formatting"]
+        H2["ruff check --fix<br/>Lint + import sort"]
+        H3["trailing-whitespace<br/>end-of-file-fixer<br/>check-yaml / check-toml"]
     end
 
     subgraph ci [GitHub Actions CI]
         direction TB
-        C1["Format check\nruff format --check"]
-        C2["Lint check\nruff check"]
-        C3["Tests\npytest -v"]
+        C1["Format check<br/>ruff format --check"]
+        C2["Lint check<br/>ruff check"]
+        C3["Tests<br/>pytest -v"]
     end
 
     Dev["git commit"] --> hooks
@@ -984,9 +1014,9 @@ The workflow at `.github/workflows/ci.yml` runs on:
 
 ```mermaid
 flowchart TD
-    Trigger["Push to main\nor PR to main"] --> Format["Format Job\nruff format --check"]
-    Trigger --> Lint["Lint Job\nruff check"]
-    Trigger --> Test["Test Job\npip install deps\npytest -v"]
+    Trigger["Push to main<br/>or PR to main"] --> Format["Format Job<br/>ruff format --check"]
+    Trigger --> Lint["Lint Job<br/>ruff check"]
+    Trigger --> Test["Test Job<br/>pip install deps<br/>pytest -v"]
 
     Format -->|fail| Block["PR blocked"]
     Lint -->|fail| Block
@@ -1058,6 +1088,15 @@ flowchart TD
     F --> G["7. Add URL pattern tests"]
     G --> H["8. Run: pytest + ruff check"]
 ```
+
+---
+
+## Changelog
+
+See **[CHANGELOG.md](CHANGELOG.md)** for version history. Recent updates include:
+
+- **YouTube**: Robust InnerTube response handling (UTF-8 decode with replace, JSON parse with error handling) so extraction is more resilient; fallback to yt-dlp when extraction fails.
+- **Download**: 5-level format waterfall in at most two yt-dlp runs (merge → best → b → worst, then no `-f`), with retry on "Sign in to confirm", so downloads succeed in almost all cases.
 
 ---
 

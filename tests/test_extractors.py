@@ -3,9 +3,9 @@
 from pathlib import Path
 
 from app.extractors import ExtractionError, get_extractor
+from app.extractors.base import BaseExtractor
 from app.extractors.facebook import FacebookExtractor
 from app.extractors.instagram import InstagramExtractor
-from app.extractors.base import BaseExtractor
 from app.models.enums import Platform
 
 

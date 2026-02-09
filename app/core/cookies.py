@@ -117,7 +117,9 @@ class CookieManager:
             logger.warning("No cookies in Playwright state for %s", service)
             return
         self._raw_cookies[service] = cookies
-        logger.info("Loaded %d cookies for %s from Playwright state %s", len(cookies), service, path)
+        logger.info(
+            "Loaded %d cookies for %s from Playwright state %s", len(cookies), service, path
+        )
 
     def _load_cookie_file(self, service: str, path: Path):
         """Load a single cookie file in Netscape/Mozilla format."""

@@ -12,6 +12,7 @@ Supports:
 - nsig (throttle) bypass
 """
 
+import json
 import logging
 import re
 from typing import Any
@@ -433,7 +434,17 @@ class YouTubeExtractor(BaseExtractor):
             logger.warning(f"InnerTube API returned status {response.status_code}")
             return None
 
-        return response.json()
+        # Decode body with UTF-8; use errors=replace so invalid bytes don't break parsing
+        try:
+            text = response.content.decode("utf-8", errors="replace")
+        except Exception as e:
+            logger.warning(f"InnerTube response decode failed: {e}")
+            return None
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            logger.warning(f"InnerTube response JSON parse failed: {e}")
+            return None
 
     async def _process_format(
         self,
